@@ -95,7 +95,7 @@ public class SimpleTftpClient {
 
 	public String receiveFile(String filename) {
 		if (hostAddress == null) return "unable to receive file: host not specified";
-		
+
 		if (mode == Mode.BINARY) {
 			sendBuffer.clear();
 			sendBuffer.putShort((short)1);
