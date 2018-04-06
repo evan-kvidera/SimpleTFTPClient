@@ -1,6 +1,6 @@
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -13,6 +13,7 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 public class SimpleTftpClient {
 
@@ -82,8 +83,9 @@ public class SimpleTftpClient {
 			if (cmdArgs.length != 2) {
 				return "invalid number of arguments: " + (cmdArgs.length - 1) 
 						+ "\nusage: get filename";
+			} else {
+				return putFile(cmdArgs[1]);
 			}
-			return null;
 		case "mode":
 			return null;
 		case "help":
@@ -101,6 +103,7 @@ public class SimpleTftpClient {
 
 		if (mode == Mode.BINARY) {
 			sendBuffer.clear();
+
 			sendBuffer.putShort((short) 1);
 			sendBuffer.put(filename.getBytes(StandardCharsets.US_ASCII));
 			sendBuffer.put((byte) 0);
@@ -150,6 +153,7 @@ public class SimpleTftpClient {
 		return null; 
 	}
 
+
 	private static String getErrMsgFromBuffer(ByteBuffer buf, int pktLength) {
 		buf.rewind();
 		if (buf.getShort() != Opcode.ERROR) return "Error printing invoked on non-error packet";
@@ -165,7 +169,98 @@ public class SimpleTftpClient {
 		}	
 	}
 
-	public static enum Mode {
+
+	
+	public String putFile(String filename) {
+		if (hostAddress == null) return "unable to put file: host not specified";
+		FileInputStream fis = null;
+		
+		
+		try {
+			 fis = new FileInputStream(filename);
+		} catch (FileNotFoundException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		if (mode == Mode.BINARY) {
+			sendBuffer.clear();
+			sendBuffer.putShort((short)2);
+			sendBuffer.put(filename.getBytes(StandardCharsets.US_ASCII));
+			sendBuffer.put((byte) 0);
+			sendBuffer.put("octet".getBytes(StandardCharsets.US_ASCII));
+			sendBuffer.put((byte) 0);
+			
+			sendPacket.setLength(sendBuffer.position());
+			sendPacket.setAddress(hostAddress);
+			sendPacket.setPort(port);
+			
+			try {
+				short block = 0;
+				while(fis.available()>0)
+				try {
+					int temp =fis.available();
+					sock.send(sendPacket);
+					
+					recvBuffer.clear();
+					recvPacket.setLength(516);
+					
+					sock.receive(recvPacket);
+					System.out.println(Arrays.toString(recvPacket.getData()));
+					
+					System.out.println(block);
+					block++;
+					
+					System.out.println(fis.available());
+					if (temp>512) {
+						temp=512;
+					}
+						byte[] bytearr = new byte[temp];
+
+					
+					fis.read(bytearr);
+					
+					sendBuffer.clear();
+					sendBuffer.putShort((short)3);
+					sendBuffer.getShort(block);
+					for (int n=0; n<bytearr.length;n++) {
+					sendBuffer.put(bytearr[n]);}
+					System.out.println("bytearr: "+bytearr.length);
+					sendPacket.setLength(bytearr.length+4);
+					sendPacket.setPort(recvPacket.getPort());
+		
+					
+					//return ("we put some data boiiiisss");
+					
+
+				} catch (IOException e) {
+					return "IO error: " + e.getMessage();
+				}
+				sock.send(sendPacket);
+				if (sendPacket.getLength()==516) {
+					sendBuffer.clear();
+					sendBuffer.putShort((short)3);
+					block++;
+					//if (block<255) {
+					//sendBuffer.put((byte) 0);}
+					sendBuffer.getShort(block);
+					//sendBuffer.put((byte) block);
+					sendPacket.setLength(4);
+					sendPacket.setPort(recvPacket.getPort());
+					sock.send(sendPacket);
+				}
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+
+			
+			
+		}
+		
+		
+		return null;
+	}
+	public enum Mode {
 		ASCII, BINARY
 	}
 
