@@ -12,7 +12,11 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 
 public class SimpleTftpClient {
@@ -26,6 +30,7 @@ public class SimpleTftpClient {
 	DatagramPacket recvPacket;
 	Mode mode = Mode.BINARY;
 	boolean acked = false;
+
 
 	public SimpleTftpClient() {
 		sendBuffer = ByteBuffer.allocate(516);
@@ -68,7 +73,7 @@ public class SimpleTftpClient {
 		}
 	}
 
-	public String executeTftpCommand(String command) {
+	public String executeTftpCommand(String command) throws IOException {
 		String[] cmdArgs = command.split(" ");
 		switch (cmdArgs[0]) {
 		case "connect":
@@ -211,13 +216,22 @@ public class SimpleTftpClient {
 
 
 	
-	public String putFile(String filename) {
+	public String putFile(String filename) throws IOException {
 		if (hostAddress == null) return "unable to put file: host not specified";
 		FileInputStream fis = null;
-
+		File file =new File(filename); 
 		
 		try {
-			 fis = new FileInputStream(filename);
+			fis = new FileInputStream(file); 
+			if (System.getProperty("line.seperator")!="\r\n") {
+				 Path path = Paths.get(filename);
+				 Charset charset = StandardCharsets.UTF_8;
+				 String content = new String(Files.readAllBytes(path), charset);
+				 content = content.replaceAll(System.getProperty("line.separator"), "\r\n");
+				 Files.write(path, content.getBytes(charset));
+				 fis = new FileInputStream(content);
+			 }
+			 
 		} catch (FileNotFoundException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
