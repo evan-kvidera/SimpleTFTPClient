@@ -25,6 +25,7 @@ public class SimpleTftpClient {
 	DatagramPacket sendPacket;
 	DatagramPacket recvPacket;
 	Mode mode = Mode.BINARY;
+	boolean acked = false;
 
 	public SimpleTftpClient() {
 		sendBuffer = ByteBuffer.allocate(516);
@@ -82,7 +83,7 @@ public class SimpleTftpClient {
 		case "put":
 			if (cmdArgs.length != 2) {
 				return "invalid number of arguments: " + (cmdArgs.length - 1) 
-						+ "\nusage: get filename";
+						+ "\nusage: put filename";
 			} else {
 				return putFile(cmdArgs[1]);
 			}
@@ -174,7 +175,7 @@ public class SimpleTftpClient {
 	public String putFile(String filename) {
 		if (hostAddress == null) return "unable to put file: host not specified";
 		FileInputStream fis = null;
-		
+
 		
 		try {
 			 fis = new FileInputStream(filename);
@@ -196,8 +197,9 @@ public class SimpleTftpClient {
 			
 			try {
 				short block = 0;
-				while(fis.available()>0)
+				while(fis.available()>0) {
 				try {
+					
 					int temp =fis.available();
 					sock.send(sendPacket);
 					
@@ -221,28 +223,29 @@ public class SimpleTftpClient {
 					
 					sendBuffer.clear();
 					sendBuffer.putShort((short)3);
-					sendBuffer.getShort(block);
+					sendBuffer.putShort(block);
 					for (int n=0; n<bytearr.length;n++) {
 					sendBuffer.put(bytearr[n]);}
 					System.out.println("bytearr: "+bytearr.length);
 					sendPacket.setLength(bytearr.length+4);
 					sendPacket.setPort(recvPacket.getPort());
-		
+					
 					
 					//return ("we put some data boiiiisss");
 					
-
+				
 				} catch (IOException e) {
 					return "IO error: " + e.getMessage();
-				}
+				}}
 				sock.send(sendPacket);
 				if (sendPacket.getLength()==516) {
+					sock.receive(recvPacket);
 					sendBuffer.clear();
 					sendBuffer.putShort((short)3);
 					block++;
 					//if (block<255) {
 					//sendBuffer.put((byte) 0);}
-					sendBuffer.getShort(block);
+					sendBuffer.putShort(block);
 					//sendBuffer.put((byte) block);
 					sendPacket.setLength(4);
 					sendPacket.setPort(recvPacket.getPort());
