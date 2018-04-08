@@ -12,6 +12,8 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
@@ -25,7 +27,6 @@ public class SimpleTftpClient {
 	DatagramPacket sendPacket;
 	DatagramPacket recvPacket;
 	Mode mode = Mode.BINARY;
-	boolean acked = false;
 
 	public SimpleTftpClient() {
 		sendBuffer = ByteBuffer.allocate(516);
@@ -83,7 +84,7 @@ public class SimpleTftpClient {
 		case "put":
 			if (cmdArgs.length != 2) {
 				return "invalid number of arguments: " + (cmdArgs.length - 1) 
-						+ "\nusage: put filename";
+						+ "\nusage: get filename";
 			} else {
 				return putFile(cmdArgs[1]);
 			}
@@ -99,98 +100,136 @@ public class SimpleTftpClient {
 		}
 	}
 
-	
+
 	public String receiveFile(String filename) {
-		
-		
+
+
 		if (hostAddress == null) return "unable to receive file: host not specified";
-		
+
+		sendBuffer.clear();
+
+		sendBuffer.putShort(Opcode.RRQ);
+		sendBuffer.put(filename.getBytes(StandardCharsets.US_ASCII));
+		sendBuffer.put((byte) 0);
+
 		if (mode == Mode.BINARY) {
-			sendBuffer.clear();
-
-			sendBuffer.putShort(Opcode.RRQ);
-			sendBuffer.put(filename.getBytes(StandardCharsets.US_ASCII));
-			sendBuffer.put((byte) 0);
 			sendBuffer.put("octet".getBytes(StandardCharsets.US_ASCII));
-			sendBuffer.put((byte) 0);
+		} else if (mode == Mode.ASCII) {
+			sendBuffer.put("netascii".getBytes(StandardCharsets.US_ASCII));
+		}
+		sendBuffer.put((byte) 0);
 
-			sendPacket.setLength(sendBuffer.position());
-			sendPacket.setAddress(hostAddress);
-			sendPacket.setPort(port);
-			
-			FileOutputStream outStream;
-			try {
-				outStream = new FileOutputStream(new File(filename));
-			} catch (FileNotFoundException fnfe) {
-				return "Error when creating file: " + fnfe.getMessage();
-			}
-			try {
-				sock.send(sendPacket);
+		sendPacket.setLength(sendBuffer.position());
+		sendPacket.setAddress(hostAddress);
+		sendPacket.setPort(port);
 
+		FileOutputStream outStream;
+		try {
+			outStream = new FileOutputStream(new File(filename));
+		} catch (FileNotFoundException fnfe) {
+			return "Error when creating file: " + fnfe.getMessage();
+		}
+		try {
+			sock.send(sendPacket);
+
+			recvBuffer.clear();
+
+			//boolean flag for port pairing
+			boolean portEstablished = false; 
+
+			//boolean flag for netascii translation, gets set to true when the previous char symbol consumed was a carriage return
+			boolean carriageReturnPrevious = false; 
+
+
+			//get the file in a loop
+			while(true) {
 				recvBuffer.clear();
+				recvPacket.setLength(516);
+				sock.receive(recvPacket);
+				int pktLength = recvPacket.getLength();
 
-				boolean portEstablished = false; //boolean flag for port pairing
-				
-				
-				//get the file in a loop
-				while(true) {
-					System.out.println("receiving packet...");
-					recvBuffer.clear();
-					recvPacket.setLength(516);
-					sock.receive(recvPacket);
-					int pktLength = recvPacket.getLength();
-					
-					//if not set, set the port for the transaction
-					if (!portEstablished) {
-						sendPacket.setPort(recvPacket.getPort());
-						portEstablished = true;
-					}
-					
-					//get the opcode and switch on it
-					short opcode = recvBuffer.getShort();
-					switch(opcode) {
-					case Opcode.DATA:
-						short packetNum = recvBuffer.getShort();
-						int dataLength = pktLength - recvBuffer.position();
-						outStream.getChannel().write(recvBuffer); //write the remaining parts of the buffer (data) to file
-						
-						sendBuffer.clear();
-						
-						//ack the data packet
-						sendBuffer.putShort(Opcode.ACK);
-						sendBuffer.putShort(packetNum);
-						sendPacket.setLength(4);
-						
-						System.out.println(Arrays.toString(sendPacket.getData()));
-						sock.send(sendPacket);
-						
-						System.out.println("acked packet "+packetNum);
-						
-						if (dataLength < 512)
-						{	
-							outStream.flush();
-							return "\n";
-						}
-						break;
-					case Opcode.ERROR:
-						outStream.flush();
-						outStream.close();
-						return getErrMsgFromBuffer(recvBuffer, pktLength);
-					default:
-						outStream.flush();
-						outStream.close();
-						return "Unrecognized packet opcode: "+opcode;
-					}
+				//if port not set, set the port for the transaction
+				if (!portEstablished) {
+					sendPacket.setPort(recvPacket.getPort());
+					portEstablished = true;
 				}
 
-			} catch (IOException e) {
-				return "IO error: " + e.getMessage();
+				//get the opcode and switch on it
+				short opcode = recvBuffer.getShort();
+				switch(opcode) {
+				case Opcode.DATA:
+					short packetNum = recvBuffer.getShort();
+					int dataLength = pktLength - recvBuffer.position();
+
+					//write the remaining parts of the buffer (data) to file
+
+
+					outStream.write(recvBuffer.array(), recvBuffer.position(), dataLength);
+
+
+					if (mode==Mode.ASCII) {
+						byte character;
+						while (recvBuffer.hasRemaining()) {
+							character = recvBuffer.get();
+
+							if (carriageReturnPrevious) {
+
+								//if we read a linefeed, output the system newline encoding
+								if (character == 0x0A) {
+									outStream.write(System.getProperty("line.separator").getBytes(StandardCharsets.US_ASCII));
+
+								//if we read a null char, output a lone carriage return
+								} else if (character == 0x00) {
+									outStream.write(0x0D);
+								}
+								
+								carriageReturnPrevious = false;
+								continue;
+								
+							}
+							if (character == 0x0D) {
+								carriageReturnPrevious = true;
+								continue;
+							} else {
+								outStream.write((int) character);
+								carriageReturnPrevious = false;
+							}
+						}
+
+					} else if (mode==Mode.BINARY) {
+						outStream.write(recvBuffer.array(), recvBuffer.position(), dataLength);
+					}
+
+					sendBuffer.clear();
+
+					//ack the data packet
+					sendBuffer.putShort(Opcode.ACK);
+					sendBuffer.putShort(packetNum);
+					sendPacket.setLength(4);
+
+					sock.send(sendPacket);
+
+					//if the data size was less than 512, it was the last packet
+					//flush the stream and return
+					if (dataLength < 512)
+					{	
+						outStream.flush();
+						return "";
+					}
+					break;
+				case Opcode.ERROR:
+					outStream.flush();
+					outStream.close();
+					return getErrMsgFromBuffer(recvBuffer, pktLength);
+				default:
+					outStream.flush();
+					outStream.close();
+					return "Unrecognized packet opcode: "+opcode;
+				}
 			}
-
+		} catch (IOException e) {
+			return "IO error: " + e.getMessage();
 		}
-
-
-		return null; 
 	}
 
 
@@ -210,14 +249,14 @@ public class SimpleTftpClient {
 	}
 
 
-	
+
 	public String putFile(String filename) {
 		if (hostAddress == null) return "unable to put file: host not specified";
 		FileInputStream fis = null;
 
-		
+
 		try {
-			 fis = new FileInputStream(filename);
+			fis = new FileInputStream(filename);
 		} catch (FileNotFoundException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
@@ -229,62 +268,60 @@ public class SimpleTftpClient {
 			sendBuffer.put((byte) 0);
 			sendBuffer.put("octet".getBytes(StandardCharsets.US_ASCII));
 			sendBuffer.put((byte) 0);
-			
+
 			sendPacket.setLength(sendBuffer.position());
 			sendPacket.setAddress(hostAddress);
 			sendPacket.setPort(port);
-			
+
 			try {
 				short block = 0;
-				while(fis.available()>0) {
-				try {
-					
-					int temp =fis.available();
-					sock.send(sendPacket);
-					
-					recvBuffer.clear();
-					recvPacket.setLength(516);
-					
-					sock.receive(recvPacket);
-					System.out.println(Arrays.toString(recvPacket.getData()));
-					
-					System.out.println(block);
-					block++;
-					
-					System.out.println(fis.available());
-					if (temp>512) {
-						temp=512;
-					}
+				while(fis.available()>0)
+					try {
+						int temp =fis.available();
+						sock.send(sendPacket);
+
+						recvBuffer.clear();
+						recvPacket.setLength(516);
+
+						sock.receive(recvPacket);
+						System.out.println(Arrays.toString(recvPacket.getData()));
+
+						System.out.println(block);
+						block++;
+
+						System.out.println(fis.available());
+						if (temp>512) {
+							temp=512;
+						}
 						byte[] bytearr = new byte[temp];
 
-					
-					fis.read(bytearr);
-					
-					sendBuffer.clear();
-					sendBuffer.putShort((short)3);
-					sendBuffer.putShort(block);
-					for (int n=0; n<bytearr.length;n++) {
-					sendBuffer.put(bytearr[n]);}
-					System.out.println("bytearr: "+bytearr.length);
-					sendPacket.setLength(bytearr.length+4);
-					sendPacket.setPort(recvPacket.getPort());
-					
-					
-					//return ("we put some data boiiiisss");
-					
-				
-				} catch (IOException e) {
-					return "IO error: " + e.getMessage();
-				}}
+
+						fis.read(bytearr);
+
+						sendBuffer.clear();
+						sendBuffer.putShort((short)3);
+						sendBuffer.getShort(block);
+						for (int n=0; n<bytearr.length;n++) {
+							sendBuffer.put(bytearr[n]);}
+						System.out.println("bytearr: "+bytearr.length);
+						sendPacket.setLength(bytearr.length+4);
+						sendPacket.setPort(recvPacket.getPort());
+
+
+						//return ("we put some data boiiiisss");
+
+
+					} catch (IOException e) {
+						return "IO error: " + e.getMessage();
+					}
 				sock.send(sendPacket);
 				if (sendPacket.getLength()==516) {
-					sock.receive(recvPacket);
 					sendBuffer.clear();
 					sendBuffer.putShort((short)3);
 					block++;
 					//if (block<255) {
 					//sendBuffer.put((byte) 0);}
-					sendBuffer.putShort(block);
+					sendBuffer.getShort(block);
 					//sendBuffer.put((byte) block);
 					sendPacket.setLength(4);
 					sendPacket.setPort(recvPacket.getPort());
@@ -295,11 +332,11 @@ public class SimpleTftpClient {
 				e.printStackTrace();
 			}
 
-			
-			
+
+
 		}
-		
-		
+
+
 		return null;
 	}
 	public enum Mode {
