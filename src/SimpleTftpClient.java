@@ -99,13 +99,16 @@ public class SimpleTftpClient {
 		}
 	}
 
+	
 	public String receiveFile(String filename) {
+		
+		
 		if (hostAddress == null) return "unable to receive file: host not specified";
-
+		
 		if (mode == Mode.BINARY) {
 			sendBuffer.clear();
 
-			sendBuffer.putShort((short) 1);
+			sendBuffer.putShort(Opcode.RRQ);
 			sendBuffer.put(filename.getBytes(StandardCharsets.US_ASCII));
 			sendBuffer.put((byte) 0);
 			sendBuffer.put("octet".getBytes(StandardCharsets.US_ASCII));
@@ -126,21 +129,57 @@ public class SimpleTftpClient {
 
 				recvBuffer.clear();
 
+				boolean portEstablished = false; //boolean flag for port pairing
+				
+				
+				//get the file in a loop
 				while(true) {
+					System.out.println("receiving packet...");
+					recvBuffer.clear();
+					recvPacket.setLength(516);
 					sock.receive(recvPacket);
 					int pktLength = recvPacket.getLength();
-					switch(recvBuffer.getShort()) { //get the opcode and switch on it
+					
+					//if not set, set the port for the transaction
+					if (!portEstablished) {
+						sendPacket.setPort(recvPacket.getPort());
+						portEstablished = true;
+					}
+					
+					//get the opcode and switch on it
+					short opcode = recvBuffer.getShort();
+					switch(opcode) {
 					case Opcode.DATA:
+						short packetNum = recvBuffer.getShort();
 						int dataLength = pktLength - recvBuffer.position();
 						outStream.getChannel().write(recvBuffer); //write the remaining parts of the buffer (data) to file
 						
-						if (dataLength < 512) {
+						sendBuffer.clear();
+						
+						//ack the data packet
+						sendBuffer.putShort(Opcode.ACK);
+						sendBuffer.putShort(packetNum);
+						sendPacket.setLength(4);
+						
+						System.out.println(Arrays.toString(sendPacket.getData()));
+						sock.send(sendPacket);
+						
+						System.out.println("acked packet "+packetNum);
+						
+						if (dataLength < 512)
+						{	
+							outStream.flush();
 							return "\n";
 						}
 						break;
 					case Opcode.ERROR:
+						outStream.flush();
 						outStream.close();
 						return getErrMsgFromBuffer(recvBuffer, pktLength);
+					default:
+						outStream.flush();
+						outStream.close();
+						return "Unrecognized packet opcode: "+opcode;
 					}
 				}
 
@@ -164,7 +203,7 @@ public class SimpleTftpClient {
 		buf.get(msgBytes);
 		try {
 			String errMsg = new String(msgBytes, "US-ASCII");
-			return String.format("Error %d: %s", errorCode, errMsg);
+			return String.format("error code %d: %s", errorCode, errMsg);
 		} catch (UnsupportedEncodingException e) {
 			return "Unsupported encoding: US-ASCII. Could not decode error msg";
 		}	
