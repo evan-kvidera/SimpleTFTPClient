@@ -12,9 +12,11 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 
 public class SimpleTftpClient {
@@ -27,6 +29,7 @@ public class SimpleTftpClient {
 	DatagramPacket sendPacket;
 	DatagramPacket recvPacket;
 	Mode mode = Mode.BINARY;
+
 
 	public SimpleTftpClient() {
 		sendBuffer = ByteBuffer.allocate(516);
@@ -69,11 +72,22 @@ public class SimpleTftpClient {
 		}
 	}
 
-	public String executeTftpCommand(String command) {
+	public String executeTftpCommand(String command) throws IOException {
 		String[] cmdArgs = command.split(" ");
 		switch (cmdArgs[0]) {
 		case "connect":
-			return null;
+			if (cmdArgs.length < 2) {
+				return "invalid number of arguments: " + (cmdArgs.length - 1) 
+						+ "\nusage: connect host-name [port]";
+			} else {
+				String hostname = cmdArgs[1];
+				try {
+					hostAddress = InetAddress.getByName(hostname);
+				} catch (UnknownHostException uhe){
+					return hostname + ": unknown host";
+				}
+				return "connected to: " +hostname;
+			}
 		case "get":
 			if (cmdArgs.length != 2) {
 				return "invalid number of arguments: " + (cmdArgs.length - 1) 
@@ -89,7 +103,20 @@ public class SimpleTftpClient {
 				return putFile(cmdArgs[1]);
 			}
 		case "mode":
-			return null;
+			if (cmdArgs.length != 2) {
+				return "invalid number of arguments: " + (cmdArgs.length - 1) 
+						+ "\nusage: mode ascii|binary";
+			} else {
+				if(cmdArgs[1].equalsIgnoreCase("ascii")) {
+					mode=Mode.ASCII;
+					System.out.println("Your mode is "+mode.name());
+				}else if(cmdArgs[1].equalsIgnoreCase("binary")) {
+					mode=Mode.BINARY;
+					System.out.println("Your mode is "+mode.name());
+				}else {
+					return("invalid entry");
+				}
+			}
 		case "help":
 			return null;
 		case "quit":
@@ -164,12 +191,13 @@ public class SimpleTftpClient {
 					//write the remaining parts of the buffer (data) to file
 
 
-					outStream.write(recvBuffer.array(), recvBuffer.position(), dataLength);
+					
 
 
 					if (mode==Mode.ASCII) {
 						byte character;
 						while (recvBuffer.hasRemaining()) {
+							System.out.println("new packet!");
 							character = recvBuffer.get();
 
 							if (carriageReturnPrevious) {
@@ -177,10 +205,12 @@ public class SimpleTftpClient {
 								//if we read a linefeed, output the system newline encoding
 								if (character == 0x0A) {
 									outStream.write(System.getProperty("line.separator").getBytes(StandardCharsets.US_ASCII));
+									System.out.println("Newline");
 
 								//if we read a null char, output a lone carriage return
 								} else if (character == 0x00) {
 									outStream.write(0x0D);
+									System.out.println("Lone carriage Return");
 								}
 								
 								carriageReturnPrevious = false;
@@ -193,6 +223,7 @@ public class SimpleTftpClient {
 							} else {
 								outStream.write((int) character);
 								carriageReturnPrevious = false;
+								System.out.println("Simple character: " + character);
 							}
 						}
 
@@ -248,15 +279,15 @@ public class SimpleTftpClient {
 		}	
 	}
 
-
-
-	public String putFile(String filename) {
+	
+	public String putFile(String filename) throws IOException {
 		if (hostAddress == null) return "unable to put file: host not specified";
 		FileInputStream fis = null;
-
-
+		File file =new File(filename); 
+		
 		try {
-			fis = new FileInputStream(filename);
+			fis = new FileInputStream(file); 
+			 
 		} catch (FileNotFoundException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
@@ -272,8 +303,31 @@ public class SimpleTftpClient {
 			sendPacket.setLength(sendBuffer.position());
 			sendPacket.setAddress(hostAddress);
 			sendPacket.setPort(port);
-
-			try {
+		}
+		if (mode ==Mode.ASCII) {
+			if (!System.getProperty("line.separator").equals( "\r\n")) {
+				 Path path = Paths.get(filename);
+				 Charset charset = StandardCharsets.UTF_8;
+				 String content = new String(Files.readAllBytes(path), charset);
+				 content = content.replaceAll("\r(?!\n)", "\r\0");
+				 content = content.replaceAll(System.getProperty("line.separator"), "\r\n");
+				// Files.write(path, content.getBytes(charset));
+				 fis = new FileInputStream(content);
+			}
+			
+		 	sendBuffer.clear();
+			sendBuffer.putShort((short)2);
+			sendBuffer.put(filename.getBytes(StandardCharsets.US_ASCII));
+			sendBuffer.put((byte) 0);
+			sendBuffer.put("ASCII".getBytes(StandardCharsets.US_ASCII));
+			sendBuffer.put((byte) 0);
+			
+			sendPacket.setLength(sendBuffer.position());
+			sendPacket.setAddress(hostAddress);
+			sendPacket.setPort(port);
+		}
+		
+		try {
 				short block = 0;
 				while(fis.available()>0)
 					try {
@@ -332,11 +386,9 @@ public class SimpleTftpClient {
 				e.printStackTrace();
 			}
 
-
-
-		}
-
-
+			
+			
+		
 		return null;
 	}
 	public enum Mode {
