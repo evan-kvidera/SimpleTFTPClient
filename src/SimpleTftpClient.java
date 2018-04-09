@@ -318,7 +318,10 @@ public class SimpleTftpClient {
 				content = content.replaceAll("\r(?!\n)", "\r\0");
 				content = content.replaceAll(System.getProperty("line.separator"), "\r\n");
 				// Files.write(path, content.getBytes(charset));
-				fis = new FileInputStream(content);
+				
+				File f =new File(content);
+				fis = new FileInputStream(f); 
+				
 			}
 
 			sendBuffer.clear();
