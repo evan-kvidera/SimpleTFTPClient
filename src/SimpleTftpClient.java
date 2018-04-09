@@ -1,10 +1,13 @@
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.StringBufferInputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -288,7 +291,7 @@ public class SimpleTftpClient {
 
 	public String putFile(String filename) throws IOException {
 		if (hostAddress == null) return "unable to put file: host not specified";
-		FileInputStream fis = null;
+		InputStream fis = null;
 		File file =new File(filename); 
 
 		try {
@@ -320,7 +323,7 @@ public class SimpleTftpClient {
 				// Files.write(path, content.getBytes(charset));
 				
 				File f =new File(content);
-				fis = new FileInputStream(f); 
+				fis = new ByteArrayInputStream(content.getBytes(StandardCharsets.US_ASCII)); 
 				
 			}
 
