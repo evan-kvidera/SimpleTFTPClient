@@ -316,13 +316,9 @@ public class SimpleTftpClient {
 		if (mode ==Mode.ASCII) {
 			if (!System.getProperty("line.separator").equals( "\r\n")) {
 				Path path = Paths.get(filename);
-				Charset charset = StandardCharsets.UTF_8;
-				String content = new String(Files.readAllBytes(path), charset);
-				content = content.replaceAll("\r(?!\n)", "\r\0");
+				String content = new String(Files.readAllBytes(path), StandardCharsets.US_ASCII);
 				content = content.replaceAll(System.getProperty("line.separator"), "\r\n");
-				// Files.write(path, content.getBytes(charset));
-				
-				File f =new File(content);
+				content = content.replaceAll("\r(?!\n)", "\r\0");
 				fis = new ByteArrayInputStream(content.getBytes(StandardCharsets.US_ASCII)); 
 				
 			}
