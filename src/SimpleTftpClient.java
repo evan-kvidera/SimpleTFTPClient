@@ -80,8 +80,17 @@ public class SimpleTftpClient {
 			if (cmdArgs.length < 2) {
 				return "invalid number of arguments: " + (cmdArgs.length - 1) 
 						+ "\nusage: connect host-name [port]";
-			} else {
+			} else if (cmdArgs.length ==2) {
 				String hostname = cmdArgs[1];
+				try {
+					hostAddress = InetAddress.getByName(hostname);
+				} catch (UnknownHostException uhe){
+					return hostname + ": unknown host";
+				}
+				return "connected to: " +hostname;
+			} else if (cmdArgs.length ==3) {
+				String hostname = cmdArgs[1];
+				port = Integer.parseInt(cmdArgs[2]);
 				try {
 					hostAddress = InetAddress.getByName(hostname);
 				} catch (UnknownHostException uhe){
@@ -110,16 +119,16 @@ public class SimpleTftpClient {
 			} else {
 				if(cmdArgs[1].equalsIgnoreCase("ascii")) {
 					mode=Mode.ASCII;
-					System.out.println("Your mode is "+mode.name());
+					return "Your mode is "+mode.name();
 				}else if(cmdArgs[1].equalsIgnoreCase("binary")) {
 					mode=Mode.BINARY;
-					System.out.println("Your mode is "+mode.name());
+					return "Your mode is "+mode.name();
 				}else {
 					return("invalid entry");
 				}
 			}
 		case "help":
-			return null;
+			return "connect: host-name [port] \nget: filename \nput: filename \nmode: ascii|binary \nquit: closes the client";
 		case "quit":
 			System.exit(0);
 			return null;
@@ -299,6 +308,12 @@ public class SimpleTftpClient {
 					recvPacket.setLength(516);
 					
 					sock.receive(recvPacket);
+					while(recvBuffer.getShort()==Opcode.ACK && recvBuffer.getShort()!=block) {
+					//	System.out.println(Arrays.toString(recvPacket.getData()));
+						sock.send(sendPacket);
+						recvBuffer.clear();
+						sock.receive(recvPacket);
+					}
 					System.out.println(Arrays.toString(recvPacket.getData()));
 					
 					System.out.println(block);
