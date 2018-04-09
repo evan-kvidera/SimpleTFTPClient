@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 
 public class SimpleTftpClient {
 
@@ -346,6 +347,7 @@ public class SimpleTftpClient {
 
 					sock.receive(recvPacket);
 					while(recvBuffer.getShort()==Opcode.ACK && recvBuffer.getShort()!=block) {
+
 						sock.send(sendPacket);
 						recvBuffer.clear();
 						sock.receive(recvPacket);
@@ -363,7 +365,7 @@ public class SimpleTftpClient {
 
 					sendBuffer.clear();
 					sendBuffer.putShort((short)3);
-					sendBuffer.getShort(block);
+					sendBuffer.putShort(block);
 					for (int n=0; n<bytearr.length;n++) {
 						sendBuffer.put(bytearr[n]);}
 					sendPacket.setLength(bytearr.length+4);
@@ -375,6 +377,7 @@ public class SimpleTftpClient {
 				} catch (IOException e) {
 					return "IO error: " + e.getMessage();
 				}
+				}
 				sock.send(sendPacket);
 				if (sendPacket.getLength()==516) {
 					sendBuffer.clear();
@@ -382,21 +385,17 @@ public class SimpleTftpClient {
 					block++;
 					//if (block<255) {
 					//sendBuffer.put((byte) 0);}
-					sendBuffer.getShort(block);
+					sendBuffer.putShort(block);
 					//sendBuffer.put((byte) block);
 					sendPacket.setLength(4);
 					sendPacket.setPort(recvPacket.getPort());
 					sock.send(sendPacket);
 				}
-			}
+			
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
-
-
-
 		return null;
 	}
 
