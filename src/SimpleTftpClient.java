@@ -17,7 +17,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 
 public class SimpleTftpClient {
 
@@ -200,13 +199,13 @@ public class SimpleTftpClient {
 					//write the remaining parts of the buffer (data) to file
 
 
-					
+
 
 
 					if (mode==Mode.ASCII) {
 						byte character;
 						while (recvBuffer.hasRemaining()) {
-							System.out.println("new packet!");
+							
 							character = recvBuffer.get();
 
 							if (carriageReturnPrevious) {
@@ -214,17 +213,15 @@ public class SimpleTftpClient {
 								//if we read a linefeed, output the system newline encoding
 								if (character == 0x0A) {
 									outStream.write(System.getProperty("line.separator").getBytes(StandardCharsets.US_ASCII));
-									System.out.println("Newline");
 
-								//if we read a null char, output a lone carriage return
+									//if we read a null char, output a lone carriage return
 								} else if (character == 0x00) {
 									outStream.write(0x0D);
-									System.out.println("Lone carriage Return");
 								}
-								
+
 								carriageReturnPrevious = false;
 								continue;
-								
+
 							}
 							if (character == 0x0D) {
 								carriageReturnPrevious = true;
@@ -232,7 +229,6 @@ public class SimpleTftpClient {
 							} else {
 								outStream.write((int) character);
 								carriageReturnPrevious = false;
-								System.out.println("Simple character: " + character);
 							}
 						}
 
@@ -288,15 +284,15 @@ public class SimpleTftpClient {
 		}	
 	}
 
-	
+
 	public String putFile(String filename) throws IOException {
 		if (hostAddress == null) return "unable to put file: host not specified";
 		FileInputStream fis = null;
 		File file =new File(filename); 
-		
+
 		try {
 			fis = new FileInputStream(file); 
-			 
+
 		} catch (FileNotFoundException e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
@@ -315,76 +311,70 @@ public class SimpleTftpClient {
 		}
 		if (mode ==Mode.ASCII) {
 			if (!System.getProperty("line.separator").equals( "\r\n")) {
-				 Path path = Paths.get(filename);
-				 Charset charset = StandardCharsets.UTF_8;
-				 String content = new String(Files.readAllBytes(path), charset);
-				 content = content.replaceAll("\r(?!\n)", "\r\0");
-				 content = content.replaceAll(System.getProperty("line.separator"), "\r\n");
+				Path path = Paths.get(filename);
+				Charset charset = StandardCharsets.UTF_8;
+				String content = new String(Files.readAllBytes(path), charset);
+				content = content.replaceAll("\r(?!\n)", "\r\0");
+				content = content.replaceAll(System.getProperty("line.separator"), "\r\n");
 				// Files.write(path, content.getBytes(charset));
-				 fis = new FileInputStream(content);
+				fis = new FileInputStream(content);
 			}
-			
-		 	sendBuffer.clear();
+
+			sendBuffer.clear();
 			sendBuffer.putShort((short)2);
 			sendBuffer.put(filename.getBytes(StandardCharsets.US_ASCII));
 			sendBuffer.put((byte) 0);
 			sendBuffer.put("ASCII".getBytes(StandardCharsets.US_ASCII));
 			sendBuffer.put((byte) 0);
-			
+
 			sendPacket.setLength(sendBuffer.position());
 			sendPacket.setAddress(hostAddress);
 			sendPacket.setPort(port);
 		}
-		
-		try {
-				short block = 0;
 
-				while(fis.available()>0) {
+		try {
+			short block = 0;
+
+			while(fis.available()>0) {
 				try {
-					
+
 					int temp =fis.available();
 					sock.send(sendPacket);
-					
+
 					recvBuffer.clear();
 					recvPacket.setLength(516);
-					
+
 					sock.receive(recvPacket);
 					while(recvBuffer.getShort()==Opcode.ACK && recvBuffer.getShort()!=block) {
-					//	System.out.println(Arrays.toString(recvPacket.getData()));
 						sock.send(sendPacket);
 						recvBuffer.clear();
 						sock.receive(recvPacket);
 					}
-					System.out.println(Arrays.toString(recvPacket.getData()));
-					
-					System.out.println(block);
+
 					block++;
-					
-					System.out.println(fis.available());
+
 					if (temp>512) {
 						temp=512;
 					}
-						byte[] bytearr = new byte[temp];
+					byte[] bytearr = new byte[temp];
 
 
-						fis.read(bytearr);
+					fis.read(bytearr);
 
-						sendBuffer.clear();
-						sendBuffer.putShort((short)3);
-						sendBuffer.getShort(block);
-						for (int n=0; n<bytearr.length;n++) {
-							sendBuffer.put(bytearr[n]);}
-						System.out.println("bytearr: "+bytearr.length);
-						sendPacket.setLength(bytearr.length+4);
-						sendPacket.setPort(recvPacket.getPort());
-
-
-						//return ("we put some data boiiiisss");
+					sendBuffer.clear();
+					sendBuffer.putShort((short)3);
+					sendBuffer.getShort(block);
+					for (int n=0; n<bytearr.length;n++) {
+						sendBuffer.put(bytearr[n]);}
+					sendPacket.setLength(bytearr.length+4);
+					sendPacket.setPort(recvPacket.getPort());
 
 
-					} catch (IOException e) {
-						return "IO error: " + e.getMessage();
-					}
+
+
+				} catch (IOException e) {
+					return "IO error: " + e.getMessage();
+				}
 				sock.send(sendPacket);
 				if (sendPacket.getLength()==516) {
 					sendBuffer.clear();
@@ -398,16 +388,20 @@ public class SimpleTftpClient {
 					sendPacket.setPort(recvPacket.getPort());
 					sock.send(sendPacket);
 				}
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
 			}
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 
-			
-			
-		
+
+
+
 		return null;
 	}
+
+
+
 	public enum Mode {
 		ASCII, BINARY
 	}
@@ -419,8 +413,4 @@ public class SimpleTftpClient {
 		public static final short ACK = 4;
 		public static final short ERROR = 5;
 	}
-
-
-
-
 }
